@@ -11,7 +11,7 @@ blueprint:
         Entity representing a physical push button (which restores its position
         when released). 
       selector:
-        device
+        device:
     light:
       name: Light
       selector:
