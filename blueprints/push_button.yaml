@@ -11,7 +11,8 @@ blueprint:
         Entity representing a physical push button (which restores its position
         when released). 
       selector:
-         device:
+        entity:
+          domain: device
     light:
       name: Light
       selector:
@@ -60,7 +61,7 @@ blueprint:
           step: 0.01
           unit_of_measurement: s
 
-mode: restart
+mode: single
 
 trigger:
   - domain: mqtt
@@ -68,12 +69,6 @@ trigger:
     type: action
     subtype: left_hold
     trigger: device
-  - domain: mqtt
-    device_id: !input button
-    type: action
-    subtype: left_hold_release
-    trigger: device
-
 
 action:
   - variables:
@@ -81,58 +76,74 @@ action:
   - variables:
       brightness_step_pct_negative: "{{ brightness_step_pct_positive|int * -1 }}"
       light: !input light
-  - choose:
-      - conditions:
-          # when brightness level is high
-          - condition: numeric_state
-            entity_id: !input light
-            attribute: brightness
-            above: !input brightness_threshold
-        sequence:
-          # dim down
+  
+  - parallel:
+    - sequence:
+        - wait_for_trigger:
+            - platform: device
+              domain: mqtt
+              device_id: !input button
+              type: action
+              subtype: left_hold_release
+          timeout:
+            hours: 0
+            minutes: 0
+            seconds: 5
+            milliseconds: 0
+        - stop: Button released
+    - sequence:
+        - choose:
+          - conditions:
+              # when brightness level is high
+              - condition: numeric_state
+                entity_id: !input light
+                attribute: brightness
+                above: !input brightness_threshold
+            sequence:
+              # dim down
+              - repeat:
+                  while:
+                    - condition: template
+                      value_template: "{{ (state_attr(light, 'brightness') or 0) > 0 }}"
+                  sequence:
+                    - if:
+                        - alias: If next step would not turn off the light
+                          condition: template
+                          value_template: "{{ (state_attr(light, 'brightness') or 0) > brightness_step_pct_positive }}"
+                      then:
+                        - action: light.turn_on
+                          entity_id: !input light
+                          data:
+                            transition: !input transition_step_length
+                            brightness_step_pct: "{{ brightness_step_pct_negative }}"
+                      else:
+                        - action: light.turn_off
+                          entity_id: !input light
+                          data:
+                            transition: !input transition_step_length
+                        - stop: Dimmed to zero
+                    - delay: !input delay_step_length
+        default:
+          # otherwise, dim up
           - repeat:
               while:
                 - condition: template
-                  value_template: "{{ (state_attr(light, 'brightness') or 0) > 0 }}"
+                  value_template: "{{ (state_attr(light, 'brightness') or 0) < 255 }}"
               sequence:
                 - if:
-                    - alias: If next step would not turn off the light
+                    - alias: If next step would not turn the light fully on
                       condition: template
-                      value_template: "{{ (state_attr(light, 'brightness') or 0) > brightness_step_pct_positive }}"
+                      value_template: "{{ (state_attr(light, 'brightness') or 0) + brightness_step_pct_positive < 255 }}"
                   then:
                     - action: light.turn_on
                       entity_id: !input light
                       data:
                         transition: !input transition_step_length
-                        brightness_step_pct: "{{ brightness_step_pct_negative }}"
+                        brightness_step_pct: "{{ brightness_step_pct_positive }}"
                   else:
-                    - action: light.turn_off
+                    - action: light.turn_on
                       entity_id: !input light
                       data:
                         transition: !input transition_step_length
-                    - stop: Dimmed to zero
+                    - stop: Dimmed to max
                 - delay: !input delay_step_length
-    default:
-      # otherwise, dim up
-      - repeat:
-          while:
-            - condition: template
-              value_template: "{{ (state_attr(light, 'brightness') or 0) < 255 }}"
-          sequence:
-            - if:
-                - alias: If next step would not turn the light fully on
-                  condition: template
-                  value_template: "{{ (state_attr(light, 'brightness') or 0) + brightness_step_pct_positive < 255 }}"
-              then:
-                - action: light.turn_on
-                  entity_id: !input light
-                  data:
-                    transition: !input transition_step_length
-                    brightness_step_pct: "{{ brightness_step_pct_positive }}"
-              else:
-                - action: light.turn_on
-                  entity_id: !input light
-                  data:
-                    transition: !input transition_step_length
-                - stop: Dimmed to max
-            - delay: !input delay_step_length
