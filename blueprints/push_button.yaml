@@ -12,7 +12,7 @@ blueprint:
         when released). 
       selector:
         entity:
-          domain: device
+          domain: sensor
     light:
       name: Light
       selector:
