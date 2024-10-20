@@ -11,8 +11,6 @@ blueprint:
         Entity representing a physical push button (which restores its position
         when released). 
       selector:
-        entity:
-          domain: sensor
     light:
       name: Light
       selector:
